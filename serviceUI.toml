@@ -1,0 +1,4 @@
+register_fifo_path = "/tmp/serviceUI/register_service.fifo"
+register_fifo_timeout = 60
+response_fifo_path = "/tmp/serviceUI/response.fifo"
+response_fifo_timeout = 10 # seconds

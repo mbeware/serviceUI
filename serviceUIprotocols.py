@@ -1,27 +1,38 @@
 from dataclasses import dataclass
 import json
 from dataclasses_json import dataclass_json
+from enum import Enum
+# Note : 
+# @dataclass_json
+# @dataclass
+# class myjsonclass():
+
 
 #####################
 # Messages
 #--------------------
 # announce from service to UI
 # Register/unregister
-@dataclass
+
+
+class Message_register_actions():
+    Register="Register"
+    Unregister="Unregister"
+
 @dataclass_json
-class message_announce():
+@dataclass
+class Message_register():    
     service_name: str
     action : str # register or unregister
     service_fifo : str|None
     main_formid : str = "main"
-
+    messageformat:str="message_register"
 #------------------------------------------------------------
 # from UI to service : return from widget interaction
 # 
-
-@dataclass
 @dataclass_json
-class message_widgetReturn():
+@dataclass
+class Message_widgetReturn():
     service_name: str
     formid: str
     widget_id : str
@@ -32,16 +43,16 @@ class message_widgetReturn():
 # From service to UI - new form/data to display
 # 
 
-@dataclass
 @dataclass_json
-class widgetDef():
+@dataclass
+class WidgetDef():
     type:str
     name:str
     title:str
 
 @dataclass_json
 @dataclass
-class menuChoice():
+class MenuChoice():
     code:str
     label:str
     data : str
@@ -49,15 +60,15 @@ class menuChoice():
 
 @dataclass_json
 @dataclass
-class widgetMenu():
+class WidgetMenu():
     name:str
     title:str=""
-    choices: list[menuChoice]|None=None
+    choices: list[MenuChoice]|None=None
     type:str="menu"
 
 @dataclass_json
 @dataclass
-class widgetEdit():
+class WidgetEdit():
     name:str
     title:str=""
     label:str=""
@@ -68,7 +79,7 @@ class widgetEdit():
 
 @dataclass_json
 @dataclass
-class widgetText():
+class WidgetText():
     name:str
     title:str=""
     label:str=""
@@ -79,26 +90,26 @@ class widgetText():
 
 @dataclass_json
 @dataclass
-class message_formDisplay():
+class Message_formDisplay():
     service_name: str
     formid: str
     form_title: str
     form_subtitle:str=""
-    widgets: list[widgetMenu|widgetEdit|widgetText]|None=None
+    widgets: list[WidgetMenu|WidgetEdit|WidgetText]|None=None
 
 if __name__ == "__main__":
-    ch1 = menuChoice(code="a",label="A",data="data")
-    ch2 = menuChoice(code="b",label="B",data="data")
+    ch1 = MenuChoice(code="a",label="A",data="data")
+    ch2 = MenuChoice(code="b",label="B",data="data")
     testchoices = [ch1,ch2]
-    widget1 = widgetMenu(name="test", title="Test menu",choices=testchoices)
-    widget2 = widgetMenu(name="test2", title="Test menu 2")
-    widgets_list: list[widgetMenu|widgetEdit|widgetText]|None=[widget1,widget2]
-    test_message_formDisplay:message_formDisplay = message_formDisplay(
+    widget1 = WidgetMenu(name="test", title="Test menu",choices=testchoices)
+    widget2 = WidgetMenu(name="test2", title="Test menu 2")
+    widgets_list: list[WidgetMenu|WidgetEdit|WidgetText]|None=[widget1,widget2]
+    test_message_formDisplay:Message_formDisplay = Message_formDisplay(
         service_name="test",
         formid="form1",
         form_title="Form 1",
         widgets=widgets_list)
-    
-    message_formDisplay_json = test_message_formDisplay.to_json()
-    print(message_formDisplay_json)
+    print(f"dataclass : {test_message_formDisplay}")
+    message_formDisplay_json = test_message_formDisplay.to_json() # type: ignore
+    print(f"json : {message_formDisplay_json}")
 
