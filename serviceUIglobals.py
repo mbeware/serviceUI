@@ -1,6 +1,14 @@
 from mbewareCommonTools import createlogger, change_loglevel
-import logging
+from serviceUIprotocols import Service
 
-loggername = "serviceUIdash.log"
-logger = createlogger(loggername)
-change_loglevel(loggername,logging.DEBUG)
+logger = None                          # global logger ####################################    
+service_list:dict[str,Service] = {}    # global service_list ##############################
+
+config = {}
+
+def init(loggername = "serviceUIdash.log",loggerlevel=None):
+    global logger
+    logger = createlogger(loggername)
+    if loggerlevel: 
+        change_loglevel(loggername,loggerlevel)
+

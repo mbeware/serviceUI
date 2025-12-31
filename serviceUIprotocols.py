@@ -8,12 +8,22 @@ from enum import Enum
 # class myjsonclass():
 
 
+#################
+# Service
+@dataclass 
+class Service():
+    name:str
+    fifo_path:str
+    main_formid:str
+
+
+
+
 #####################
 # Messages
 #--------------------
-# announce from service to UI
+# register_request from service to UI
 # Register/unregister
-
 
 class Message_register_actions():
     Register="Register"
@@ -24,9 +34,43 @@ class Message_register_actions():
 class Message_register():    
     service_name: str
     action : str # register or unregister
-    service_fifo : str|None
+    service_fifo : str
     main_formid : str = "main"
     messageformat:str="message_register"
+    
+def valid_register_request(request:str,logger=None):
+    def display_warning(message:str,logger=None):
+        if logger:  logger.warn(message)
+        else:       print(f"Warning:{message}")
+                    
+    if logger: logger.debug(f"valid_register_request : Validating received message")
+    try: 
+        message_dict = json.loads(request)
+    except: 
+        display_warning(f"valid_register_request: Invalid message structure or invalid json {request}",logger)
+        return None
+    
+    if message_dict.get("messageformat") != Message_register.messageformat:
+        display_warning(f"valid_register_request: Invalid message format for register_request - {message_dict}",logger)
+        return None
+    if logger: logger.debug(f"valid_register_request: Message format is valid. Validating action")
+    register_request=Message_register(**message_dict)
+    if register_request.action not in ( Message_register_actions.Register, Message_register_actions.Unregister):
+        display_warning(f"valid_register_request: Invalid actions {register_request.action}",logger)
+        return None
+    if logger: logger.debug(f"valid_register_request: Action is valid. Validating fifo")
+    if register_request.service_fifo is None or register_request.service_fifo =="": 
+        display_warning(f"valid_register_request: Fifo file is requiered {register_request.service_fifo}",logger)
+        return None
+    if register_request.service_name is None or register_request.service_name =="":
+        display_warning(f"valid_register_request: Service name is requiered {register_request.service_fifo}",logger)
+        return None
+
+    return register_request     
+
+
+
+
 #------------------------------------------------------------
 # from UI to service : return from widget interaction
 # 

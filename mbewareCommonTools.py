@@ -1,6 +1,5 @@
-import logging
+import os
 import colorist
-import tomli 
 from typing import Any
 
 
@@ -9,9 +8,11 @@ from typing import Any
 ############################################################################################
 # Logger utils
 ############################################################################################
+from logging import DEBUG, INFO, WARN, ERROR, CRITICAL , FATAL
+import logging
 
 _mbeware_loggers={}
-import os
+
 
 def createlogger(logname):
     global _mbeware_loggers
@@ -132,6 +133,8 @@ ExitCodeDesc={
 ############################################################################################
 # Config utils
 ############################################################################################
+import tomli 
+
 def load_config(config_path:str)->dict[str,Any]:
     try:
         current_directory = os.getcwd()

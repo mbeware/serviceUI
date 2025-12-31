@@ -1,83 +1,34 @@
-from mbewareCommonTools import createlogger, ExitCode, load_config
-import serviceUIglobals
-from serviceUIglobals import logger
+# my stuff
+import copy
+from typing import Any
+from mbewareCommonTools import  ExitCode, load_config, DEBUG
+from serviceUIglobals import logger , service_list, config
+from serviceUIprotocols import valid_register_request, Service
+
+import serviceUIglobals # import what ever wasn't
+
+from serviceUIfifohelper import readFifo, sendDataAndWaitForResponse
+
+#
+import threading
+
+
 from time import sleep
 # CAREFULL : FLASK HAS A QUIRK THAT IT RESTART ITSELF IN DEBUG-MODE
-# serviceUI has 2 "main" loops and we might add a "management" loop
-
-# Loop 1 (asyncio): 
-#                   task1 : listen to services register/unregister requests
-#                           add/remove the service from the list
-#                   task2 : check queue for message from flask and process them
-
 # Loop 2 (flask):   Wait for webUI trigger or refresh data timeout
 #                   send message to service
 #                   wait for response (with timeout)
 #                   display new form/info (or timeout error)
-from serviceUIfifohelper import readFifo
-from serviceUIprotocols import *
-import pathlib
-from typing import Any
-
-
-###import asyncio
-###from asyncio import sleep
-###all_tasks:dict[str,asyncio.Task]={}
-###all_loops:dict[str,asyncio.EventLoop]={}
-import threading
-import json
-
-# def createLoop():
-#     global all_tasks    
-#     loop = asyncio.new_event_loop()
-#     logger.debug(f"{loop=}")
-#     asyncio.set_event_loop(loop)
-#     all_tasks["registeringLoop"]=loop.create_task(mainloop())
-#     loop.run_forever()
 
 
 
-# async def mainloop():
-#     i=0
-#     loop=asyncio.get_running_loop()
-#     all_tasks["mainLoop"]=loop.create_task(registeringLoop())
 
-#     while True:
-#         i+=1
-#         logger.debug(f"mainloop: {i=}")
-#         await sleep(10)
+# region: Registering Services ###########################################################################################
 
 def startRegisteringLoop():
     thread = threading.Thread(target=registeringLoop)
     thread.start()
 
-def valid_register_request(request:str):
-    logger.debug(f"valid_register_request : Validating received message")
-    try: 
-        message_dict = json.loads(request)
-    except: 
-        logger.error(f"valid_register_request: Invalid message structure or invalid json {request}")
-        return None
-    
-    if message_dict.get("messageformat") != Message_register.messageformat:
-        logger.error(f"valid_register_request: Invalid message format from  {config['register_fifo_path']} - {message_dict}")
-        return None
-    logger.debug(f"valid_register_request: Message format is valid. Validating action")
-    register_request=Message_register(**message_dict)
-    if register_request.action not in ( Message_register_actions.Register, Message_register_actions.Unregister):
-        logger.error(f"valid_register_request: Invalid actions {register_request.action}")
-        return None
-    logger.debug(f"valid_register_request: Action is valid. Validating fifo")
-    if register_request.service_fifo is None or register_request.service_fifo =="": 
-        logger.error(f"valid_register_request: Fifo file is requiered {register_request.service_fifo}")
-        return None
-    if register_request.service_name is None or register_request.service_name =="":
-        logger.error(f"valid_register_request: Service name is requiered {register_request.service_fifo}")
-        return None
-
-    return register_request     
-
-service_list:dict[str,Message_register] = {}
 
 def registeringLoop(): #register loop
     logger.debug(f"registeringLoop:start")
@@ -100,31 +51,119 @@ def registeringLoop(): #register loop
             newdata=True
         else:
             newdata=True
-            register_request = valid_register_request(json_message)
+            register_request = valid_register_request(json_message,logger)
             if register_request: 
-                thisrequest = register_request
-                service_list[register_request.service_name] = thisrequest
+                newService = Service(name=register_request.service_name,
+                                     fifo_path=register_request.service_fifo,
+                                     main_formid=register_request.main_formid)
+                service_list[register_request.service_name] = newService
                 logger.debug(f"registeringLoop: {register_request.service_name} has been registered")
-   
+                logger.info("Service list : ")
+                for service in service_list.keys():
+                    logger.info(f"   {service} : {service_list[service].fifo_path} -{service_list[service].main_formid }")
+# endregion   
+
+# region: flask App ######################################################################################################
+from serviceUIweb import *
+from flask import Flask, render_template,render_template_string, request, redirect
+
+def actOnResponse(json_response):
+    pass
+
+app = myFlask(__name__)        
+@app.route("/")
+def index():
+    form : dict[str,Any] = {}
+    if (app.currentFormid==config["WEBUIFORMID"]) or (not app.selectedService):
+        widgetService = service_list
+        form = app.selectServiceForm(widgetService["choices"])
+    
+    else : 
+        form = copy.deepcopy(app.currentForm)
+        navmenu = app.navMenuToSelectService()
+        form["widgets"].extend(navmenu)
+    app.printform(form)
+    return render_template_string(app.dynhtml, **form)
+
+
+# ----- MENU ACTION ---------------------------------------------------------
+@app.route("/menu_action", methods=["POST"])
+def menu_action():
+    global selected_service
+    route:str = "/"
+    choice = request.form.get("choice")
+    service = request.form.get("service")
+    formid = request.form.get("formid")
+    widgetname = request.form.get("widget_name")
+    if widgetname == config["WEBUIBACKTOSELECT"] and choice == config["WEBUIFORMID"] : 
+        selected_service = None
+        app.currentFormid=choice
+        route = "/"
+    else:
+        if app.currentFormid == config["WEBUIFORMID"]:
+            service = choice
+            selected_service = service
+            app.selectedService=service
+
+        message={"service":service,"formid":formid,"widget_type":"menu","widget_name":widgetname,"choice":choice}   
+        if selected_service:
+            response = sendDataAndWaitForResponse(sendpath=service_list[selected_service].fifo_path,
+                                    receivepath=config["response_fifo_path"],
+                                    data=message,
+                                    timeout=config["response_fifo_timeout"])     
+            if response:
+                toto = actOnResponse(response)
+            else:
+                route = "/timeout"
+        else: 
+            route = "/"
+    return redirect(route)
+
+
+# ----- TEXT INPUT ACTION ---------------------------------------------------
+@app.route("/text_input_action", methods=["POST"])
+def text_input_action():
+    value = request.form.get("value")
+    logger.debug(f"[FR] Texte reçu: {value}")
+    # TODO: send to pipe
+    return ""   # redirect("/")
+
+
+# ----- TEXT BLOCK AUTO REFRESH ---------------------------------------------
+LIVE_LOGS=["a","b","c"]
+
+@app.route("/refresh_block")
+def refresh_block():
+    idx = int(request.args.get("index", 1))  # noqa: F841
+    # TODO: read actual logs from service FIFO
+    return "\n".join(LIVE_LOGS)
+
+@app.route("/timeout")
+def timeout():
+    selected_service=None
+    return render_template("timeout.html")    
+
+# endregion
+
 def main():
     global config
     global service_list
+    global selected_service
+    selected_service = None
     config = load_config("serviceUI.toml")
     # start listening to the Fifo for services to register
     logger.debug("Starting the registereing loop") 
     startRegisteringLoop()
     # start the webserver to display the UI
-    #####
-
+    #serviceUIweb.run(debug=False, port=5000) 
     # everything is done. We wait forever. (Not needen if Flask, but do not forget to kill loop in flask.exit)
     while True:
         sleep(22)
         
-        logger.debug("Service list : ")
-        for service in service_list.keys():
-            logger.debug(f"   {service} : {service_list[service].service_fifo} -{service_list[service].main_formid }")
+
         logger.debug("main(): new loop....")    
 if __name__ == "__main__":
+    serviceUIglobals.init(loggerlevel=DEBUG) # create the logger, and change the level to debug. 
     main()
 
     
